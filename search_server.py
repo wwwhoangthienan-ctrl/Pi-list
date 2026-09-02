@@ -21,6 +21,7 @@ Usage:
 import argparse
 import json
 import mmap
+import os
 import sys
 
 from flask import Flask, request, jsonify
@@ -142,18 +143,33 @@ def search_grid():
     return jsonify({"matches": matches})
 
 
+def init_state(digit_file, k):
+    STATE["k"] = k
+    STATE["mmap"] = get_mmap(digit_file)
+    STATE["index"] = load_index(digit_file + f".k{k}.index.json", k)
+    print(f"Loaded {len(STATE['mmap'])} digits, {len(STATE['index'])} k-mers", file=sys.stderr)
+
+
+# Loaded at import time so gunicorn (which imports this module rather
+# than running it as __main__) picks up the data too. Set these via
+# environment variables in your host's dashboard (Render, etc):
+#   DIGIT_FILE = pi_digits_2M.txt
+#   INDEX_K    = 6
+_env_digit_file = os.environ.get("DIGIT_FILE")
+if _env_digit_file:
+    init_state(_env_digit_file, int(os.environ.get("INDEX_K", 6)))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("digit_file")
     parser.add_argument("--k", type=int, default=6)
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8080)))
     args = parser.parse_args()
 
-    STATE["k"] = args.k
-    STATE["mmap"] = get_mmap(args.digit_file)
-    STATE["index"] = load_index(args.digit_file + f".k{args.k}.index.json", args.k)
+    if not STATE:
+        init_state(args.digit_file, args.k)
 
-    print(f"Loaded {len(STATE['mmap'])} digits, {len(STATE['index'])} k-mers", file=sys.stderr)
     app.run(host="0.0.0.0", port=args.port)
 
 
